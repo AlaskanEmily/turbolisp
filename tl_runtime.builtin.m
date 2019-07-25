@@ -164,8 +164,8 @@
 % Define components.
 %-----------------------------------------------------------------------------%
 
-%:- pred builtin_let_bind `with_type` execute_pred `with_inst` execute_pred.
-%:- pred builtin_def_bind `with_type` execute_pred `with_inst` execute_pred.
+:- pred builtin_let_bind `with_type` execute_pred `with_inst` execute_pred.
+:- pred builtin_def_bind `with_type` execute_pred `with_inst` execute_pred.
 :- pred builtin_fn_bind `with_type` execute_pred `with_inst` execute_pred.
 
 %=============================================================================%
@@ -434,4 +434,43 @@ builtin_fn_bind(Element, Result, !Runtime) :-
         FnResult = maybe.ok({Name, ArgNames, Body, Arity}),
         def_bind(args(Name, Arity), lisp_bind(ArgNames, Body), !Runtime),
         Result = maybe.ok(atom(Name))
+    ).
+
+%-----------------------------------------------------------------------------%
+
+builtin_def_bind(Element, Result, !Runtime) :-
+    ( if
+        Element = [NameElement|[Value|[]]]
+    then
+        (
+            NameElement = atom(Name),
+            !.Runtime ^ globals = Globals,
+            !Runtime ^ globals := rbtree.set(Globals, Name, Value),
+            Result = maybe.ok(Value)
+        ;
+            NameElement = list(_),
+            Result = maybe.error("Error: `def/2` -> arg 1 is a list")
+        )
+    else
+        exception.throw(exception.software_error(
+            "Wrong arity in `def/2` (builtin_bind is probably broken)"))
+    ).
+
+%-----------------------------------------------------------------------------%
+
+builtin_let_bind(Element, Result, !Runtime) :-
+    ( if
+        Element = [NameElement|[Value|[]]]
+    then
+        (
+            NameElement = atom(Name),
+            def_var(Name, Value, !Runtime),
+            Result = maybe.ok(Value)
+        ;
+            NameElement = list(_),
+            Result = maybe.error("Error: `let/2` -> arg 1 is a list")
+        )
+    else
+        exception.throw(exception.software_error(
+            "Wrong arity in `let/2` (builtin_bind is probably broken)"))
     ).
