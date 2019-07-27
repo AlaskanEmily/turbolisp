@@ -1,4 +1,8 @@
+% Any copyright is dedicated to the Public Domain.
+% http://creativecommons.org/publicdomain/zero/1.0/
+
 :- module turbo_s.string_stream.
+
 %=============================================================================%
 % Types and typeclass instances for streams using string ranges
 :- interface.

@@ -1,4 +1,8 @@
+% Any copyright is dedicated to the Public Domain.
+% http://creativecommons.org/publicdomain/zero/1.0/
+
 :- module turbo_s.parser.
+
 %=============================================================================%
 % Parser core for TurboLisps's S-expression parser.
 :- interface.
