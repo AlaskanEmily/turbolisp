@@ -1,6 +1,6 @@
-:- module turbolisp.parser.
+:- module turbo_s.parser.
 %=============================================================================%
-% Parser for TurboLisp
+% Parser core for TurboLisps's S-expression parser.
 :- interface.
 %=============================================================================%
 

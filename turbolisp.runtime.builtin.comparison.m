@@ -1,7 +1,7 @@
 :- module turbolisp.runtime.builtin.comparison.
 
 %=============================================================================%
-% Turbolisp implementation details for comparison builtins.
+% TurboLisp implementation details for comparison builtins.
 :- interface.
 %=============================================================================%
 

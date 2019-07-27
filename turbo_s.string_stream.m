@@ -1,4 +1,4 @@
-:- module turbolisp.string_stream.
+:- module turbo_s.string_stream.
 %=============================================================================%
 % Types and typeclass instances for streams using string ranges
 :- interface.
@@ -16,7 +16,7 @@
 
 %-----------------------------------------------------------------------------%
 
-:- type tl_err == turbolisp.string_stream.error.
+:- type tl_err == turbo_s.string_stream.error.
 
 %-----------------------------------------------------------------------------%
 

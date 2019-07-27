@@ -1,7 +1,7 @@
 :- module turbolisp.runtime.builtin.arithmetic.
 
 %=============================================================================%
-% Turbolisp implementation details for arithmetic builtins.
+% TurboLisp implementation details for arithmetic builtins.
 :- interface.
 %=============================================================================%
 

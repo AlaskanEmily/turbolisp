@@ -1,6 +1,7 @@
 :- module turbolisp.runtime.
 
 %=============================================================================%
+% TurboLisp runtime components.
 :- interface.
 %=============================================================================%
 
@@ -8,12 +9,6 @@
 :- use_module assoc_list.
 :- use_module rbtree.
 :- use_module maybe.
-
-%-----------------------------------------------------------------------------%
-
-% TODO: Remove these
-
-:- type element ---> atom(string) ; list(list.list(element)).
 
 %-----------------------------------------------------------------------------%
 % TODO!
@@ -631,7 +626,7 @@ reduce(Element, Result, !Runtime) :-
                     turbolisp__runtime__builtin__define(Op), Tag)
             then
                 (
-                    Op = turbolisp.runtime.builtin.fn
+                    Op = turbolisp.runtime.builtin.fn,
                     % Super rudimentary inline test.
                     % Only inline fn if we have a body consisting of less than
                     % 64 elements, and all the elements are either atoms or a
