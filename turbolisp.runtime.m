@@ -15,6 +15,7 @@
 :- use_module assoc_list.
 :- use_module rbtree.
 :- use_module maybe.
+:- use_module univ.
 
 %-----------------------------------------------------------------------------%
 % TODO!
@@ -38,6 +39,17 @@
 %-----------------------------------------------------------------------------%
 
 :- type result == maybe.maybe_error(element).
+
+%-----------------------------------------------------------------------------%
+
+:- type call_error --->
+    error(string) ;
+    no_such_bind ;
+    arity_error.
+
+%-----------------------------------------------------------------------------%
+
+:- type call_result == maybe.maybe_error(element, call_error).
 
 %-----------------------------------------------------------------------------%
 
@@ -78,7 +90,7 @@
     globals::variables,
     binds::rbtree.rbtree(bind_spec, bind),
     stack_frames::list.list(frame),
-    pending_io::list.list(string)).
+    pending_io::list.list(univ.univ)).
 
 %-----------------------------------------------------------------------------%
 
@@ -111,7 +123,8 @@
 :- pred pop_stack_frame_check(int::in, runtime::in, runtime::out) is det.
 
 %-----------------------------------------------------------------------------%
-
+% Defines a variable with a specific name.
+% This will replace any existing variable of the same name.
 :- pred def_var(string::in, element::in, runtime::in, runtime::out) is det.
 
 %-----------------------------------------------------------------------------%
@@ -133,10 +146,19 @@
 :- mode find_bind(in, in, in, out) is semidet.
 
 %-----------------------------------------------------------------------------%
-% This is a workaround, as the Mercury compiler gets confused when disjuncting
-% on functors which contain predicates as elements in the functor.
+% Calls a specified bind with a given list of arguments.
+%
+% This is also used internally for all calls. Using it there is a workaround,
+% as the Mercury compiler gets confused when disjuncting on functors which
+% contain predicates as elements in the functor.
 :- pred call_bind(bind, list.list(element), result, runtime, runtime).
 :- mode call_bind(in, in, res_uo, in, out) is det.
+
+%-----------------------------------------------------------------------------%
+% Calls a bind by spec.
+% Reduces all arguments, checks arity (rather than throwing like call_bind/5).
+:- pred call_bind_spec(bind_spec, list.list(element), call_result, runtime, runtime).
+:- mode call_bind_spec(in, in, res_uo, in, out) is det.
 
 %-----------------------------------------------------------------------------%
 
@@ -400,6 +422,10 @@ builtin_bind(args("-", 2), mercury_bind(turbolisp__runtime__builtin__builtin_min
 builtin_bind(args("*", 2), mercury_bind(turbolisp__runtime__builtin__builtin_times_bind)).
 builtin_bind(args("/", 2), mercury_bind(turbolisp__runtime__builtin__builtin_divide_bind)).
 
+builtin_bind(args("&", 2), mercury_bind(turbolisp__runtime__builtin__builtin_and_bind)).
+builtin_bind(args("|", 2), mercury_bind(turbolisp__runtime__builtin__builtin_or_bind)).
+builtin_bind(args("^", 2), mercury_bind(turbolisp__runtime__builtin__builtin_xor_bind)).
+
 builtin_bind(args("fn", 3), mercury_bind(turbolisp__runtime__builtin__builtin_fn_bind)).
 
 %-----------------------------------------------------------------------------%
@@ -460,6 +486,44 @@ call_bind(lisp_bind(ArgNames, Body), Args, Result, !Runtime) :-
     ;
         CallResult = maybe.error(Error),
         Result = maybe.error(Error)
+    ).
+
+%-----------------------------------------------------------------------------%
+
+call_bind_spec(Spec, Args, Result, !Runtime) :-
+    StartRuntime = !.Runtime,
+    ( if
+        require_complete_switch [Spec] (
+            Spec = args(_, list.length(Args))
+        ;
+            Spec = variadic(_)
+        )
+    then
+        ( if
+            rbtree.search(StartRuntime ^ binds, Spec, Bind)
+        then
+            list.map_foldl2(execute, Args, ExecArgs, !Runtime, maybe.ok, ExecArgResult),
+            (
+                ExecArgResult = maybe.ok,
+                call_bind(Bind, ExecArgs, CallResult, !Runtime),
+                (
+                    CallResult = maybe.ok(Return),
+                    Result = maybe.ok(Return)
+                ;
+                    CallResult = maybe.error(Error),
+                    StartRuntime = !:Runtime, % Reset runtime.
+                    Result = maybe.error(error(Error))
+                )
+            ;
+                ExecArgResult = maybe.error(Error),
+                StartRuntime = !:Runtime, % Reset runtime.
+                Result = maybe.error(error(Error))
+            )
+        else
+            Result = maybe.error(no_such_bind)
+        )
+    else
+        Result = maybe.error(arity_error)
     ).
 
 %-----------------------------------------------------------------------------%
@@ -578,44 +642,10 @@ reduce(Element, Result, !Runtime) :-
             PreprocessOutput = reduced(Reduced),
             Result = maybe.ok(Reduced)
         ;
-            PreprocessOutput = comparison(Cmp, A, B, Tail),
-            
-            % Try to inline the result of the comparison, if possible.
-            % This also allows us to not even compile the side which was not used.
-            turbolisp.runtime.builtin.comparison_tag(Cmp, Tag),
-            FallbackResult = maybe.ok(list([atom(Tag)|Tail])),
-            (
-                % Incorrect tail length for comparison builtin. Good luck kid.
-                ( Tail = [] ; Tail = [_|[]] ; Tail = [_|[_|[_|_]]] ),
-                Result = FallbackResult
-            ;
-                Tail = [Y|[N|[]]],
-                turbolisp.runtime.builtin.comparison(Cmp, A, B, CmpResult),
-                (
-                    CmpResult = turbolisp.runtime.builtin.error(_),
-                    Result = FallbackResult
-                ;
-                    (
-                        CmpResult = turbolisp.runtime.builtin.yes, Choice = Y
-                    ;
-                        CmpResult = turbolisp.runtime.builtin.no, Choice = N
-                    ),
-                    
-                    % It should be safe to reduce the result. EIther it is known at
-                    % compile-time, or the comparison will have failed to yield a
-                    % result and we won't be in this arm.
-                    reduce(Choice, ChoiceResult, !Runtime),
-                    (
-                        ChoiceResult = maybe.error(_),
-                        Result = FallbackResult
-                    ;
-                        ChoiceResult = maybe.ok(_),
-                        Result = ChoiceResult
-                    )
-                )
-            )
+            PreprocessOutput = comparison(_Cmp, _A, _B, _Tail),
+            Result = maybe.ok(Element)
         ;
-            PreprocessOutput = execute(Tag, Tail, Arity),
+            PreprocessOutput = execute(Tag, Tail, _Arity),
             ( if
                 % Do NOT use the results of define ops during reduction.
                 % For let's, the existence of the let will be erased by popping
@@ -657,18 +687,6 @@ reduce(Element, Result, !Runtime) :-
                     Op = turbolisp.runtime.builtin.def
                 ),
                 Result = maybe.ok(list([atom(Tag)|Tail]))
-            else if
-                find_bind(Tag, Arity, !.Runtime ^ binds, Bind)
-            then
-                call_bind(Bind, Tail, CallResult, !Runtime),
-                
-                (
-                    CallResult = maybe.error(Error),
-                    Result = maybe.error(func_error(Tag, Arity, Error))
-                ;
-                    CallResult = maybe.ok(_),
-                    Result = CallResult
-                )
             else
                 Result = maybe.ok(list([atom(Tag)|Tail]))
             )
@@ -697,7 +715,7 @@ reduce(!Element, !Runtime, N, int.plus(N, 1), !Error) :-
 %-----------------------------------------------------------------------------%
 
 execute(Element, Result, !Runtime) :-
-    preprocess(reduce, Element, PreprocessResult, !Runtime),
+    preprocess(execute, Element, PreprocessResult, !Runtime),
     (
         PreprocessResult = maybe.error(Error),
         Result = maybe.error(Error)
@@ -731,14 +749,17 @@ execute(Element, Result, !Runtime) :-
                 % Incorrect tail length for comparison builtin. Good luck kid.
                 ( Tail = [] ; Tail = [_|[]] ; Tail = [_|[_|[_|_]]] ),
                 turbolisp.runtime.builtin.comparison_tag(Cmp, Tag),
-                Result = maybe.error(func_error(Tag, 2, "Comparison must have arity of 2"))
+                Result = maybe.error(func_error(Tag, 4,
+                    string.append(
+                        "Comparison must have arity of 4, was ",
+                        string.from_int(int.plus(list.length(Tail),2)))))
             ;
                 Tail = [Y|[N|[]]],
                 turbolisp.runtime.builtin.comparison(Cmp, A, B, CmpResult),
                 (
                     CmpResult = turbolisp.runtime.builtin.error(Error),
                     turbolisp.runtime.builtin.comparison_tag(Cmp, Tag),
-                    Result = maybe.error(func_error(Tag, 2, Error))
+                    Result = maybe.error(func_error(Tag, 4, Error))
                 ;
                     (
                         CmpResult = turbolisp.runtime.builtin.yes, Choice = Y
@@ -746,14 +767,11 @@ execute(Element, Result, !Runtime) :-
                         CmpResult = turbolisp.runtime.builtin.no, Choice = N
                     ),
                     
-                    % It should be safe to reduce the result. EIther it is known at
-                    % compile-time, or the comparison will have failed to yield a
-                    % result and we won't be in this arm.
-                    reduce(Choice, ChoiceResult, !Runtime),
+                    execute(Choice, ChoiceResult, !Runtime),
                     (
                         ChoiceResult = maybe.error(Error),
                         turbolisp.runtime.builtin.comparison_tag(Cmp, Tag),
-                        Result = maybe.error(func_error(Tag, 2, Error))
+                        Result = maybe.error(func_error(Tag, 4, Error))
                     ;
                         ChoiceResult = maybe.ok(_),
                         Result = ChoiceResult
