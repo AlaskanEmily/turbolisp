@@ -167,6 +167,14 @@
 :- pred builtin_divide_bind `with_type` execute_pred `with_inst` execute_pred.
     
 %-----------------------------------------------------------------------------%
+% Bitwise components.
+%-----------------------------------------------------------------------------%
+
+:- pred builtin_and_bind `with_type` execute_pred `with_inst` execute_pred.
+:- pred builtin_or_bind `with_type` execute_pred `with_inst` execute_pred.
+:- pred builtin_xor_bind `with_type` execute_pred `with_inst` execute_pred.
+
+%-----------------------------------------------------------------------------%
 % Define components.
 %-----------------------------------------------------------------------------%
 
@@ -370,10 +378,16 @@ builtin_ge_bind(E, R, !RT) :- builtin_comparison_bind(builtin_ge, E, R, !RT).
 
 %-----------------------------------------------------------------------------%
 
-builtin_plus_bind(E, R, !RT) :- builtin_arithmetic_bind(builtin_plus, plus, E, R).
-builtin_minus_bind(E, R, !RT) :- builtin_arithmetic_bind(builtin_minus, minus, E, R).
-builtin_times_bind(E, R, !RT) :- builtin_arithmetic_bind(builtin_times, times, E, R).
-builtin_divide_bind(E, R, !RT) :- builtin_arithmetic_bind(builtin_divide, divide, E, R).
+builtin_plus_bind(E, R, !RT) :- builtin_math_bind(builtin_plus, plus, E, R).
+builtin_minus_bind(E, R, !RT) :- builtin_math_bind(builtin_minus, minus, E, R).
+builtin_times_bind(E, R, !RT) :- builtin_math_bind(builtin_times, times, E, R).
+builtin_divide_bind(E, R, !RT) :- builtin_math_bind(builtin_divide, divide, E, R).
+
+%-----------------------------------------------------------------------------%
+
+builtin_and_bind(E, R, !RT) :- builtin_bit_bind(builtin_and, int_and, E, R).
+builtin_or_bind(E, R, !RT) :- builtin_bit_bind(builtin_or, int_or, E, R).
+builtin_xor_bind(E, R, !RT) :- builtin_bit_bind(builtin_xor, int_xor, E, R).
 
 %-----------------------------------------------------------------------------%
 % Used to implement let and def

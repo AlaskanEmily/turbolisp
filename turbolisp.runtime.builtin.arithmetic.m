@@ -19,28 +19,46 @@
 
 %-----------------------------------------------------------------------------%
 
+:- mode arith_pred == (pred(in, in, uo) is det).
+:- inst arith_pred == (pred(in, in, uo) is det).
+
+%-----------------------------------------------------------------------------%
+
 :- type math_pred == (pred(number, number, string)).
-:- mode math_pred == (pred(in, in, uo) is det).
-:- inst math_pred == (pred(in, in, uo) is det).
+
+%-----------------------------------------------------------------------------%
+
+:- type bit_pred == (pred(int, int, int)).
 
 %-----------------------------------------------------------------------------%
 % TODO: Variadic + and *?
-:- pred builtin_plus `with_type` math_pred `with_inst` math_pred.
-:- pred builtin_minus `with_type` math_pred `with_inst` math_pred.
-:- pred builtin_times `with_type` math_pred `with_inst` math_pred.
-:- pred builtin_divide `with_type` math_pred `with_inst` math_pred.
+:- pred builtin_plus `with_type` math_pred `with_inst` arith_pred.
+:- pred builtin_minus `with_type` math_pred `with_inst` arith_pred.
+:- pred builtin_times `with_type` math_pred `with_inst` arith_pred.
+:- pred builtin_divide `with_type` math_pred `with_inst` arith_pred.
 
 %-----------------------------------------------------------------------------%
 
-:- pred builtin_arithmetic_bind(math_pred, arithmetic, list(element), result).
-:- mode builtin_arithmetic_bind(math_pred, in, in, res_uo) is det.
+:- pred builtin_and `with_type` bit_pred `with_inst` arith_pred.
+:- pred builtin_or `with_type` bit_pred `with_inst` arith_pred.
+:- pred builtin_xor`with_type` bit_pred `with_inst` arith_pred.
+
+%-----------------------------------------------------------------------------%
+
+:- pred builtin_math_bind(math_pred, arithmetic, list(element), result).
+:- mode builtin_math_bind(arith_pred, in, in, res_uo) is det.
+
+%-----------------------------------------------------------------------------%
+
+:- pred builtin_bit_bind(bit_pred, logic, list(element), result).
+:- mode builtin_bit_bind(arith_pred, in, in, res_uo) is det.
 
 %=============================================================================%
 % Most of the implementation of the arithmetic submodule is private.
 :- implementation.
 %=============================================================================%
 
-:- use_module int.
+:- import_module int.
 :- import_module float.
 
 %-----------------------------------------------------------------------------%
@@ -123,10 +141,16 @@ builtin_times(ANum, BNum, arithmetic(int.times, float_times, ANum, BNum)).
 builtin_divide(ANum, BNum, arithmetic('int__div', float_divide, ANum, BNum)).
 
 %-----------------------------------------------------------------------------%
+
+builtin_and(A, B, A /\ B).
+builtin_or(A, B, A \/ B).
+builtin_xor(A, B, int.xor(A, B)).
+
+%-----------------------------------------------------------------------------%
 % Implementation of arithmetic operators.
 :- pred arithmetic(math_pred,
     arithmetic, list.list(element), result).
-:- mode arithmetic(math_pred,
+:- mode arithmetic(arith_pred,
     in, in, res_uo) is det.
 
 :- pragma inline(arithmetic/4).
@@ -167,4 +191,62 @@ arithmetic(Pred, Op, Args, Result) :-
 
 %-----------------------------------------------------------------------------%
 
-builtin_arithmetic_bind(Pred, Op, Args, Out) :- arithmetic(Pred, Op, Args, Out).
+builtin_math_bind(Pred, Op, Args, Out) :- arithmetic(Pred, Op, Args, Out).
+
+%-----------------------------------------------------------------------------%
+
+builtin_bit_bind(Pred, Op, Args, Result) :-
+    two_atoms(Args, ArgsResult),
+    (
+        ArgsResult = maybe.error(Error),
+        builtin_op_tag(logic(Op), Tag),
+        Result = maybe.error(func_error(Tag, 2, Error))
+    ;
+        ArgsResult = maybe.ok({AStr, BStr}),
+        ( if
+            number_type(AStr, ANum)
+        then
+            ( if
+                number_type(BStr, BNum)
+            then
+                (
+                    ANum = int(A),
+                    (
+                        BNum = int(B),
+                        Pred(A, B, Out),
+                        Result = maybe.ok(atom(string.from_int(Out)))
+                    ;
+                        ANum = int(_), BNum = float(_),
+                        builtin_op_tag(logic(Op), Tag),
+                        Result = maybe.error(func_error(
+                            Tag,
+                            2,
+                            string.append(string.append(
+                                "arg 2 not an integer (", BStr), ")")))
+                    )
+                ;
+                    ANum = float(_),
+                    builtin_op_tag(logic(Op), Tag),
+                    Result = maybe.error(func_error(
+                        Tag,
+                        2,
+                        string.append(string.append(
+                            "arg 1 not an integer (", BStr), ")")))
+                )
+            else
+                builtin_op_tag(logic(Op), Tag),
+                Result = maybe.error(func_error(
+                    Tag,
+                    2,
+                    string.append(string.append(
+                        "arg 2 not a number (", BStr), ")")))
+            )
+        else
+            builtin_op_tag(logic(Op), Tag),
+            Result = maybe.error(func_error(
+                Tag,
+                2,
+                string.append(string.append(
+                    "arg 1 not a number (", AStr), ")")))
+        )
+    ).
